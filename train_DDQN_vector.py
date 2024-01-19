@@ -41,7 +41,8 @@ parser.add_argument('--ri', type=int, default=0, help='render index: the index o
 parser.add_argument('--render_mode', type=str, default=None, help='human / rgb_array / None')
 parser.add_argument('--render_speed', type=str, default='fast', help='real / fast / slow')
 parser.add_argument('--max_ep_steps', type=int, default=1000, help='maximum episodic steps')
-parser.add_argument('--AWARD', type=int, default=100, help='reward of reaching target area')
+parser.add_argument('--AWARD', type=float, default=80, help='reward of reaching target area')
+parser.add_argument('--PUNISH', type=float, default=-10, help='reward when collision happens')
 parser.add_argument('--normalization', type=str2bool, default=True, help='whether normalize the observations')
 parser.add_argument('--flip', type=str2bool, default=False, help='whether expand training maps with fliped maps')
 parser.add_argument('--compile', type=str2bool, default=False, help='whether to torch.compile to boost simulation speed')
@@ -211,9 +212,9 @@ class DDQN_Agent(object):
 		explore_frac = self.explore_frac_scheduler.value(steps)
 		i = int(explore_frac * self.actor_envs)
 		explore = torch.arange(i, device=device) / (2 * i)  # 0 ~ 0.5
-		self.p *= 0
-		self.p[self.actor_envs - i:] = explore
-		self.p += self.min_eps
+		self.p.fill_(self.min_eps)
+		self.p[self.actor_envs - i:] += explore
+		self.p = self.p[torch.randperm(self.actor_envs)]  # 打乱vectorized e-greedy noise, 让探索覆盖每一个地图
 
 	def select_action(self, s, deterministic):
 		'''Input: batched state, (n,32), torch.tensor, on device
