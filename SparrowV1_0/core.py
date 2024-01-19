@@ -241,8 +241,9 @@ class Sparrow():
 
         self.done_vec = self.tr_vec + self.dw_vec # (N,), used for AutoReset
 
-        self.reward_vec *= 0
+        self.reward_vec.fill_(-0.05)
         self.reward_vec[win_vec] = self.AWARD
+        self.reward_vec[dead_vec] = self.PUNISH
 
     def _Normalize(self, observation):
         '''Normalize the raw observations (N,32) to relative observations (N,32)'''
