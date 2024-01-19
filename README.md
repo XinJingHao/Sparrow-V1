@@ -275,6 +275,15 @@ The environment copies inside the vectorized environment may be done (terminated
   
   b) different environment copies are reset independently
 
+  c) the interaction in ```train_DDQN_vector.py``` runs in the following way:
+```python
+A1 = model.select_action(S1)
+S2, R2, dw2, tr2, info2 = envs.step(A1)
+buffer.add(S1, A1, R2, dw2, ct1)
+done2 = dw2+tr2
+ct2 = ~(done2)
+```
+
 ## Important Differences from Sparrow-V0
 
 Some features from Sparrow-V0 are modified in ```Sparrow-V1.0```. They are:
