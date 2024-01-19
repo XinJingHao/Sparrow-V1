@@ -109,7 +109,7 @@ def main(opt):
 				for _ in range(opt.actor_envs):
 					model.train(buffer)
 				# fresh vectorized e-greedy noise
-				if total_steps % (10*opt.actor_envs) == 0:
+				if total_steps % (100*opt.actor_envs) == 0:
 					model.fresh_explore_prob(total_steps-opt.random_steps)
 
 			# save model
