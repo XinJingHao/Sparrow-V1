@@ -217,7 +217,10 @@ We strongly suggest not using the **Stop** action when training an RL model, bec
 
 #### Reward:
 
-In Sparrow-V1.0, we only provide the naive reward function. That is, when the robot arrives at the target area, it receives a reward of 100, otherwise 0.
+In Sparrow-V1.0, we only provide the naive reward function.
+R=80, when arrive;
+R=-10, when collide;
+R=0, otherwise
 
 #### Termination:
 
