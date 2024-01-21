@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--render', type=str2bool, default=False, help='Render or Not')
 parser.add_argument('--write', type=str2bool, default=False, help='Whether use SummaryWriter to record the training curve')
 parser.add_argument('--Loadmodel', type=str2bool, default=False, help='Whether load pretrained model')
-parser.add_argument('--ModelIdex', type=int, default=100, help='which model(e.g. 10k.pth) to load')
+parser.add_argument('--ModelIdex', type=int, default=10, help='which model(e.g. 10k.pth) to load')
 parser.add_argument('--device', type=str, default='cuda:0', help='device for DDQN, Buffer, and Sparrow')
 
 parser.add_argument('--Max_train_steps', type=int, default=int(5e5), help='Max training steps')
