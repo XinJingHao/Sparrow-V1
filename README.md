@@ -112,10 +112,10 @@ The training curve will be saved in the `runs` folder, for more details about ho
 
 ### Play with trained model:
 
-During training, the DDQN model will be saved in the `model` folder every 16k steps (e.g. _model/16k.pth_).  After training, you can play with it via:
+During training, the DDQN model will be saved in the `model` folder automatically (e.g. _model/10k.pth_).  After training, you can play with it via:
 
 ```bash
-python train_DDQN_vector.py --render True --Loadmodel True --ModelIdex 16 # 16 means use '16k.pth'
+python train_DDQN_vector.py --render True --Loadmodel True --ModelIdex 10 # 10 means use '10k.pth'
 ```
 
 ## Dive into Sparrow
