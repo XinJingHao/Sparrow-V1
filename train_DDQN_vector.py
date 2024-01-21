@@ -19,7 +19,6 @@ parser.add_argument('--ModelIdex', type=int, default=10, help='which model(e.g. 
 parser.add_argument('--device', type=str, default='cuda:0', help='device for DDQN, Buffer, and Sparrow')
 
 parser.add_argument('--Max_train_steps', type=int, default=int(5e5), help='Max training steps')
-parser.add_argument('--buffersize', type=int, default=int(5e5), help='Replay buffer size')
 parser.add_argument('--save_interval', type=int, default=int(1e3), help='Model saving interval, in Vsteps.')
 parser.add_argument('--random_steps', type=int, default=int(1E4), help='steps for random policy to explore')
 parser.add_argument('--init_explore_frac', type=float, default=1.0, help='init explore fraction')
@@ -55,6 +54,7 @@ if opt.write: from torch.utils.tensorboard import SummaryWriter
 device = torch.device(opt.device)
 opt.state_dim = 5+27 # [dx,dy,orientation,v_linear,v_angular] + [lidar result]
 opt.action_dim = 5
+opt.buffersize = min(int(1E6), opt.Max_train_steps)
 
 
 def main(opt):
@@ -84,8 +84,9 @@ def main(opt):
 		envs = Sparrow(opt)
 
 		s, info = envs.reset() # vectorized env has auto truncate mechanism, so we only reset() once.
-		ep_r, total_steps = 0, 0
+		total_steps = 0
 		ct = torch.ones(opt.actor_envs, device=device, dtype=torch.bool)
+		dones, train_arrival_rate = torch.zeros(opt.actor_envs, dtype=torch.bool, device=device), 0
 		while total_steps < opt.Max_train_steps:
 			if total_steps < opt.random_steps:
 				a = torch.randint(0,opt.action_dim,(opt.actor_envs,),device=device)
@@ -98,11 +99,13 @@ def main(opt):
 			total_steps += opt.actor_envs
 
 			# log and record
-			ep_r += r[0].item()
-			if dw[0] or tr[0]:
-				if opt.write: writer.add_scalar('ep_r', ep_r, global_step=total_steps)
-				print('Vectorized Sparrow-v1: N:',opt.actor_envs, 'steps: {}k'.format(round(total_steps / 1000,2)), 'score:', ep_r)
-				ep_r = 0
+			train_arrival_rate += (~dones * (r == opt.AWARD)).sum()  # 获得AWARD奖励时，表示抵达终点; Use last done
+			dones += (dw + tr)
+			if dones.all():
+				train_arrival_rate = round(train_arrival_rate.item() / opt.actor_envs, 2)
+				if opt.write: writer.add_scalar('Arrival Rate', train_arrival_rate, global_step=total_steps)
+				print('Vectorized Sparrow-v1: N:',opt.actor_envs, 'steps: {}k'.format(round(total_steps / 1000,2)), 'Arrival Rate:', train_arrival_rate)
+				dones, train_arrival_rate = torch.zeros(opt.actor_envs, dtype=torch.bool, device=device), 0
 
 			# train and fresh e-greedy noise
 			if total_steps >= opt.random_steps:
