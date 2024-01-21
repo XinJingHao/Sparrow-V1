@@ -68,6 +68,7 @@ class Sparrow():
         self.render_speed = params.render_speed # should be one of 'real', 'fast', 'slow'
         self.max_ep_steps = params.max_ep_steps  # maximum episodic steps
         self.AWARD = params.AWARD  # 通关奖励
+        self.PUNISH = params.PUNISH # 碰撞惩罚
         self.normalization = params.normalization
         self.flip = params.flip # Expand the training maps by flipping the maps
         self.compile = params.compile # use torch.compile to boost simulation speed
