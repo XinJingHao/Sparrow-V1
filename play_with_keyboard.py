@@ -3,18 +3,6 @@ import argparse
 import pygame
 import torch
 
-def str2bool(v):
-    '''transfer str to bool for argparse
-    You can just ignore this funciton. It's not related to the RL and Sparrow.'''
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ('yes', 'True','true','TRUE', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'False','false','FALSE', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
-
 '''Hyperparameter Setting For Sparrow'''
 parser = argparse.ArgumentParser()
 parser.add_argument('--map_address', type=str, default='train_maps', help='map address')
