@@ -211,7 +211,7 @@ $$[V^{i+1}\_{linear},\ V^{i+1}\_{angular}] = K·[V^{i}\_{linear},\ V^{i}\_{angul
 
 $$[dx^{i+1},dy^{i+1},\theta^{i+1}] = [dx^{i},dy^{i},\theta^{i}] + [V^{i+1}\_{linear},V^{i+1}\_{linear},\ V^{i+1}\_{angular}]·\Delta t · [\cos(\theta^{i}), -\sin(\theta^{i}), 1]$$
 
-Here, **K** is a hyperparameter between (0,1), describing the combined effect of inertia, friction and the underlying velocity control algorithm, default: 0.6. The parameters mentioned in this section can be found in the *Robot initialization* and *Lidar initialization* part of `SparrowV1_0/core.py` and customized according to your own scenario.
+Here, **K** is a hyperparameter between (0,1), describing the combined effect of inertia, friction and the underlying velocity control algorithm, default: 0.6. The parameters mentioned in this section can be found in the *Robot initialization* and *Lidar initialization* part of `SparrowV1_1/core.py` and customized according to your own scenario.
 
 ### LiDAR Group:
 <img src="https://github.com/XinJingHao/Images/blob/main/Sparrow_V1/ld_group.jpg" align="right" width="23%"/>
