@@ -27,6 +27,8 @@ parser.add_argument('--net_width', type=int, default=256, help='Hidden net width
 parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
 parser.add_argument('--batch_size', type=int, default=256, help='lenth of sliced trajectory')
 parser.add_argument('--soft_target', type=str2bool, default=False, help='Target net update mechanism')
+parser.add_argument('--alpha', type=float, default=0.4, help='alpha of PER')
+parser.add_argument('--beta', type=float, default=0.6, help='beta of PER')
 
 
 '''Hyperparameter Setting For Sparrow'''
@@ -79,12 +81,12 @@ def main(opt):
 			# use SummaryWriter to record the training curve
 			timenow = str(datetime.now())[0:-10]
 			timenow = ' ' + timenow[0:13] + '_' + timenow[-2::]
-			writepath = f'runs/SparrowV1.1_DDQN' + timenow
+			writepath = f'runs/SparrowV1.1_PER_DDQN' + timenow
 			if os.path.exists(writepath): shutil.rmtree(writepath)
 			writer = SummaryWriter(log_dir=writepath)
 
 		# build vectorized environment and experience replay buffer
-		buffer = ReplayBuffer(opt)
+		buffer = PrioritizedReplayBuffer(opt)
 		envs = Sparrow(**vars(opt))
 
 		# build train/test env for evaluation
@@ -102,7 +104,7 @@ def main(opt):
 		while total_steps < opt.Max_train_steps:
 			a = model.select_action(s, deterministic=False) # will generate random steps at the beginning
 			s_next, r, dw, tr, info = envs.step(a) #dw(terminated): die or win; tr: truncated
-			buffer.add(s, a, r, dw, ct) #注意ct是用上一次step的， 即buffer.add()要在ct = ~(dw + tr)前
+			buffer.add(s, a, r, dw, ct) #注意ct是用上一次step的， 即buffer.add()要在ct = ~(dw + tr)前； (s1,a1,r2,dw2,ct1)
 			ct = ~(dw + tr)  # 如果当前s_next是”截断状态“或”终止状态“，则s_next与s_next_next是不consistent的，训练时要丢掉
 			s = s_next
 			total_steps += opt.actor_envs
@@ -114,7 +116,6 @@ def main(opt):
 				# fresh vectorized e-greedy noise
 				if total_steps % (100*opt.actor_envs) == 0:
 					model.fresh_explore_prob(total_steps)
-
 
 			'''evaluate, log, record, save'''
 			if total_steps % (opt.eval_freq*opt.actor_envs) == 0:
@@ -143,7 +144,7 @@ def evaluate_policy(envs, model, deterministic, AWARD):
 		dones += (dw + tr)
 	return round(total_r.item() / num_env, 2), round(arrival_rate.item() / num_env, 2)
 
-class ReplayBuffer():
+class PrioritizedReplayBuffer():
 	'''Experience replay buffer(For vector env)'''
 	def __init__(self, opt):
 		self.device = device
@@ -153,21 +154,29 @@ class ReplayBuffer():
 		self.ptr = 0
 		self.size = 0
 		self.full = False
-		self.batch_size = opt.batch_size
+		self.bs_per_env = int(opt.batch_size/self.actor_envs) # batchsize per env: 每次采样时，每个env出多少个数据
+		self.constant_env_idx = torch.arange(opt.actor_envs).unsqueeze(-1).repeat((1, self.bs_per_env)).view(-1)
+		# eg: actor_envs=2, bs_per_env=3, then constant_env_idx=[0,0,0,1,1,1]
 
 		self.s = torch.zeros((self.max_size, opt.actor_envs, opt.state_dim), device=self.device)
 		self.a = torch.zeros((self.max_size, opt.actor_envs, 1), dtype=torch.int64, device=self.device)
 		self.r = torch.zeros((self.max_size, opt.actor_envs, 1), device=self.device)
 		self.dw = torch.zeros((self.max_size, opt.actor_envs, 1), dtype=torch.bool, device=self.device)
-		self.ct = torch.zeros((self.max_size, opt.actor_envs, 1),dtype=torch.bool, device=self.device)
+		self.priorities = torch.zeros((self.max_size, opt.actor_envs), device=self.device)
+
+		self.max_p = 1.0
+		self.alpha = opt.alpha
+		self.beta = opt.beta
+
 
 	def add(self, s, a, r, dw, ct):
-		'''add transitions to buffer'''
+		'''Add transitions to buffer
+		   ct[i] 表示 s[i]与s[i+1]是否来自同一个回合'''
 		self.s[self.ptr] = s
 		self.a[self.ptr] = a.unsqueeze(-1)  #(actor_envs,) to (actor_envs,1)
 		self.r[self.ptr] = r.unsqueeze(-1)
 		self.dw[self.ptr] = dw.unsqueeze(-1)
-		self.ct[self.ptr] = ct.unsqueeze(-1)
+		self.priorities[self.ptr] = ct*self.max_p # s[t]和s[t+1]不连续时，采样概率为0，永远无法被sample; (actor_envs,)
 
 		self.ptr = (self.ptr + 1) % self.max_size
 		self.size = min(self.size + 1, self.max_size)
@@ -176,16 +185,24 @@ class ReplayBuffer():
 
 	def sample(self):
 		'''sample batch transitions'''
-		if not self.full:
-			ind = torch.randint(low=0, high=self.ptr - 1, size=(self.batch_size,), device=self.device)  # sample from [0, ptr-2]
-		else:
-			ind = torch.randint(low=0, high=self.size - 1, size=(self.batch_size,), device=self.device)  # sample from [0, size-2]
-			if self.ptr - 1 in ind: ind = ind[ind != (self.ptr - 1)] # delate ptr - 1 in [0, size-2]
+		# 因为没有state[size]，所以从[0, size-1)中sample：
+		Prob_torch_gpu = self.priorities[0: self.size - 1].clone()  # 这里必须clone
+		# 因为state[ptr-1]和state[ptr]不来自同一个episode， 所以采样时不能采到ptr-1:
+		if self.ptr < self.size: Prob_torch_gpu[self.ptr - 1].fill_(0.)
 
-		env_ind = torch.randint(low=0, high=self.actor_envs, size=(len(ind),), device=self.device) # [l,h)
-		# [b, s_dim], #[b, 1], [b, 1], [b, s_dim], [b, 1], [b, 1]
-		return (self.s[ind,env_ind,:], self.a[ind,env_ind,:],self.r[ind,env_ind,:],
-				self.s[ind + 1,env_ind,:], self.dw[ind,env_ind,:], self.ct[ind, env_ind,:])
+		step_idx = torch.multinomial(Prob_torch_gpu.T, num_samples=self.bs_per_env, replacement=True).view(-1) # (batchsize,)
+		IS_weight = (self.size * Prob_torch_gpu[step_idx, self.constant_env_idx]) ** (-self.beta) # (batchsize,)
+		Normed_IS_weight = (IS_weight / IS_weight.max()).unsqueeze(-1)  # (batchsize,1)
+
+		return (self.s[step_idx, self.constant_env_idx,:],  # [b, s_dim]
+				self.a[step_idx, self.constant_env_idx,:],  # [b, 1]
+				self.r[step_idx, self.constant_env_idx,:],  # [b, 1]
+				self.s[step_idx+1, self.constant_env_idx,:],  # [b, s_dim]
+				self.dw[step_idx, self.constant_env_idx,:],  # [b, 1]
+				step_idx, # (batchsize,)
+				Normed_IS_weight) # (batchsize,1)
+
+
 
 def orthogonal_init(layer, gain=1.414):
 	for name, param in layer.named_parameters():
@@ -257,7 +274,7 @@ class DDQN_Agent(object):
 
 	def train(self,replay_buffer):
 		self.train_counter += 1
-		s, a, r, s_next, dw, ct = replay_buffer.sample()
+		s, a, r, s_next, dw, step_idx, Normed_IS_weight = replay_buffer.sample()
 
 		# Compute the target Q value with Double Q-learning
 		with torch.no_grad():
@@ -269,15 +286,18 @@ class DDQN_Agent(object):
 		current_q_a = self.q_net(s).gather(1,a)
 
 		# Mse regression
-		if ct.all():
-			q_loss = F.mse_loss(current_q_a, target_Q)
-		else:
-			# discard truncated s, because we didn't save its next state
-			q_loss = torch.square(ct * (current_q_a - target_Q)).mean()
+		q_loss = torch.square(Normed_IS_weight * (target_Q - current_q_a)).mean()
 		self.q_net_optimizer.zero_grad()
 		q_loss.backward()
 		torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), 10)
 		self.q_net_optimizer.step()
+
+		# update priorites of the current batch
+		with torch.no_grad():
+			batch_priorities = ((torch.abs(target_Q - current_q_a) + 0.01)**replay_buffer.alpha).squeeze(-1) #(batchsize,) on devive
+			replay_buffer.priorities[step_idx, replay_buffer.constant_env_idx] = batch_priorities
+			current_max_p = batch_priorities.max()
+			if current_max_p > replay_buffer.max_p: replay_buffer.max_p = current_max_p # 更新最大priority
 
 		# Update the target net
 		if self.soft_target:
