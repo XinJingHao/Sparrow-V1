@@ -164,14 +164,14 @@ opt.state_dim = 5+opt.grouped_ld_num # [dx,dy,orientation,v_linear,v_angular] + 
 Afterward, you can create the Sparrow-V1.1 environment via:
 
 ```python
-envs = Sparrow(params)
+envs = Sparrow(**vars(opt))
 ```
 
 The above command will instantiate a Sparrow-V1.1 environment with standard Gym API, and you can interact with it via:
 
 ```python
 import torch
-device = torch.device(params.device)
+device = torch.device(opt.device)
 
 s, info = envs.reset()
 while True:
