@@ -3,7 +3,6 @@ import argparse
 import pygame
 import torch
 
-
 '''Sparrow-V1.1 Configuration'''
 parser = argparse.ArgumentParser()
 parser.add_argument('--map_address', type=str, default='train_maps', help='map address: train_maps / test_maps')

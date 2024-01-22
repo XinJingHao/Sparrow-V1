@@ -211,7 +211,7 @@ $$[V^{i+1}\_{linear},\ V^{i+1}\_{angular}] = K·[V^{i}\_{linear},\ V^{i}\_{angul
 
 $$[dx^{i+1},dy^{i+1},\theta^{i+1}] = [dx^{i},dy^{i},\theta^{i}] + [V^{i+1}\_{linear},V^{i+1}\_{linear},\ V^{i+1}\_{angular}]·\Delta t · [\cos(\theta^{i}), -\sin(\theta^{i}), 1]$$
 
-Here, **K** is a hyperparameter between (0,1), describing the combined effect of inertia, friction and the underlying velocity control algorithm, default: 0.6. The parameters mentioned in this section can be found in the *Robot initialization* and *Lidar initialization* part of `SparrowV1/sparrow.py` and customized according to your own scenario.
+Here, **K** is a hyperparameter between (0,1), describing the combined effect of inertia, friction and the underlying velocity control algorithm, default: 0.6. The parameters mentioned in this section can be found in the *Robot initialization* and *Lidar initialization* part of `SparrowV1_0/core.py` and customized according to your own scenario.
 
 ### LiDAR Group:
 <img src="https://github.com/XinJingHao/Images/blob/main/Sparrow_V1/ld_group.jpg" align="right" width="23%"/>
@@ -231,7 +231,9 @@ The basic task in Sparrow is about driving the robot from the start point to the
 
 #### State:
 
+
 The state of the robot is a vector of length 32 (when ```ld_GN=1```), containing **position** (*state[0:2] = [dx,dy]*), **orientation** (state[2]=θ), **velocity** (*state[3:5]=[v_linear, v_angular]*), **LiDAR** (*state[5:32] = scanning result*). Note that if the `--normalization` were set to `False` when instantiating the env, the env would output the raw state in **World Coordinate Frame**. Otherwise, the env outputs  a normalized state. For more details, please check the `_Normalize()` function in `SparrowV1_1/core.py`.
+
 
 
 #### Action:
@@ -355,6 +357,7 @@ To cite this repository in publications:
 The name "Sparrow" actually comes from an old saying *“The sparrow may be small but it has all the vital organs.”* Hope you enjoy using Sparrow! 
 
 Additionally, we have made detailed comments on the source code (`SparrowV1_1/core.py`) so that you can modify Sparrow to fit your own problem. But only for non-commercial purposes, and all rights are reserved by [Jinghao Xin](https://github.com/XinJingHao).
+
 
 
 
