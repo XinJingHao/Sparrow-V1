@@ -128,7 +128,7 @@ Before instantiating Sparrow-V1.0, it is necessary to specify the parameters so 
 from SparrowV1_0.core import Sparrow, str2bool
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument('--map_address', type=str, default='train_maps', help='map address')
+parser.add_argument('--map_address', type=str, default='train_maps', help='same_maps / train_maps / test_maps')
 parser.add_argument('--device', type=str, default='cuda:0', help='running device of sparrow')
 parser.add_argument('--ld_num', type=int, default=27, help='number of lidar streams in each world')
 parser.add_argument('--ri', type=int, default=0, help='render index: the index of the world that be rendered')
