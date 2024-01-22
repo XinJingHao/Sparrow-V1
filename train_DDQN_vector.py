@@ -58,7 +58,7 @@ opt.grouped_ld_num = int(opt.ld_num/opt.ld_GN)
 opt.state_dim = 5+opt.grouped_ld_num # [dx,dy,orientation,v_linear,v_angular] + [lidar result]
 opt.action_dim = 5
 opt.buffersize = min(int(1E6), opt.Max_train_steps)
-print(opt)
+# print(opt)
 
 
 def main(opt):
