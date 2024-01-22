@@ -1,42 +1,53 @@
 from collections import deque
 import numpy as np
 import torch
+import copy
 import os
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
 
-'''Recommended Hyperparameter Setting For Sparrow:
-from SparrowV1_0.core import Sparrow, str2bool
+'''Sparrow-V1.1 Configuration
+from SparrowV1_1.core import Sparrow, str2bool
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument('--map_address', type=str, default='train_maps', help='same_maps / train_maps / test_maps')
-parser.add_argument('--device', type=str, default='cuda:0', help='running device of sparrow')
+parser.add_argument('--map_address', type=str, default='train_maps', help='map address: train_maps / test_maps')
+parser.add_argument('--device', type=str, default='cuda', help='running device of Sparrow: cuda / cpu')
 parser.add_argument('--ld_num', type=int, default=27, help='number of lidar streams in each world')
-parser.add_argument('--ri', type=int, default=0, help='render index: the index of the world that be rendered')
+parser.add_argument('--ld_GN', type=int, default=3, help='how many lidar streams are grouped in each group')
+parser.add_argument('--ri', type=int, default=0, help='render index: the index of world that be rendered')
 parser.add_argument('--render_mode', type=str, default='human', help='human / rgb_array / None')
 parser.add_argument('--render_speed', type=str, default='fast', help='real / fast / slow')
 parser.add_argument('--max_ep_steps', type=int, default=1000, help='maximum episodic steps')
-parser.add_argument('--AWARD', type=int, default=80, help='reward of reaching target area')
+parser.add_argument('--AWARD', type=float, default=80, help='reward of reaching target area')
 parser.add_argument('--PUNISH', type=float, default=-10, help='reward when collision happens')
-parser.add_argument('--normalization', type=str2bool, default=True, help='whether normalize the observations')
-parser.add_argument('--flip', type=str2bool, default=True, help='whether expand training maps with flipped maps')
+parser.add_argument('--STEP', type=float, default=0.0, help='reward of each step')
+parser.add_argument('--normalization', type=str2bool, default=False, help='whether to normalize the observations')
+parser.add_argument('--flip', type=str2bool, default=False, help='whether to expand training maps with fliped maps')
+parser.add_argument('--noise', type=str2bool, default=False, help='whether to add noise to the observations')
+parser.add_argument('--DR', type=str2bool, default=False, help='whether to use Domain Randomization')
+parser.add_argument('--DR_freq', type=int, default=int(5e3), help='frequency of Domain Randomization, in total steps')
 parser.add_argument('--compile', type=str2bool, default=False, help='whether to torch.compile to boost simulation speed')
-params = parser.parse_args()
+opt = parser.parse_args()
+opt.grouped_ld_num = int(opt.ld_num/opt.ld_GN)
+opt.state_dim = 5+opt.grouped_ld_num # [dx,dy,orientation,v_linear,v_angular] + [lidar result]
 '''
 
 
 
 
 '''
-Sparrow-V1.0: A Reinforcement Learning Friendly Simulator for Mobile Robot
+Sparrow-V1.1: A Reinforcement Learning Friendly Simulator for Mobile Robot
 
 Several good features:
-· Vectorizable (Enable super fast data collection)
+· Vectorizable (Super fast data collection)
+· State noise (State of the robot can be noised)
+· Domain Randomization (control interval, maximum velocity, inertia, friction, magnitude of state noise can be randomized while training)
+· LiDAR Group (Group the LiDAR streams to compress the state space)
 · Lightweight (Consume only 140~300 mb GPU memories for vectorized environments)
 · Standard Gym API with Pytorch data flow
 · GPU/CPU are both acceptable (If you use Pytorch to build your RL model, you can run your RL model and Sparrow both on GPU. Then you don't need to transfer the data from CPU to GPU anymore.)
 · Easy to use (20kb pure Python files. Just import, never worry about installation)
-· Ubuntu/Windows/MacOS are all supported
+· Ubuntu/Windows are both supported
 · Accept image as map (Customize your own environments easily and rapidly)
 · Detailed comments on source code
 
@@ -46,61 +57,68 @@ All rights reserved.
 “The sparrow may be small but it has all the vital organs.”
 Developed by Jinghao Xin. Github：https://github.com/XinJingHao
 
-
-Current version: V1.0 (2023/6/23)
+Current version: V1.1 (2024/1/15)
 '''
 
 # Color of obstacles when render
 _OBS = (64, 64, 64)
 
 class Sparrow():
-    '''Sparrow-V1.0'''
+    '''Sparrow-V1.1'''
     metadata = {"render_modes": ["human", "rgb_array"]}
 
-    def __init__(self, params):
+    def __init__(self, **params):
+        self.__dict__.update(params) # Configuration Init
+        if self.DR: self.noise = True  # 开启Domain Randomization后默认开启state noise
         self.window_size = 366  # 366.0cm = 366个栅格，索引[0,365]
-        self.state_dim = 5+params.ld_num
-        self.map_address = params.map_address
-        self.dvc = torch.device(params.device)# running device of Sparrow, better use GPU to accelerate simulation
-        self.ld_num = params.ld_num  # number of lidar streams in each world
-        self.ri = params.ri # render index
-        self.render_mode = params.render_mode # should be one of "human", "rgb_array", None
-        self.render_speed = params.render_speed # should be one of 'real', 'fast', 'slow'
-        self.max_ep_steps = params.max_ep_steps  # maximum episodic steps
-        self.AWARD = params.AWARD  # 通关奖励
-        self.PUNISH = params.PUNISH # 碰撞惩罚
-        self.normalization = params.normalization
-        self.flip = params.flip # Expand the training maps by flipping the maps
-        self.compile = params.compile # use torch.compile to boost simulation speed
+        self.dvc = torch.device(self.device)  # running device of Sparrow, better use GPU to accelerate simulation
 
         '''Map initialization'''
         # ['map1.png' 'map10.png' 'map11.png' ... 'map14.png' 'map15.png' 'map2.png' 'map3.png' ... 'map9.png']
-        self.maps = np.sort(os.listdir(os.getcwd() + '/SparrowV1_0/' + self.map_address))
+        self.maps = np.sort(os.listdir(os.getcwd() + '/SparrowV1_1/' + self.map_address))
         self.N = len(self.maps) # Number of vectorized Env, equating to number of maps
         if self.flip: self.N *= 2 # 翻转后训练数据数量翻倍
-        self._bound_init() # 为所有地图生成bound_code, 补齐后整合为self.vec_bound_code
+        self._bound_init() # 为所有地图生成bound_code, 补齐后整合为self.vec_bound_code, 用于雷达扫描
         self.target_area = 100 # # enter the target_area×target_area (cm) space in the upper left of the map will be considered win.
 
         '''Car initialization'''
         self.car_radius = 9  # cm
         self.collision_trsd = self.car_radius + 5  # collision threshould, in cm
-        self.ctrl_interval = 0.1 # control interval, in second
-        self.ctrl_delay = 1 # in ctrl_interval
-        self.ctrl_pipe = deque(maxlen=self.ctrl_delay+1) # holding the delayed action
-        self.K = 0.6
         self.v_linear_max = 18 # max linear velocity, in cm/s
         self.v_angular_max = 1 # max angular velocity, in rad/s
         self.a_space = torch.tensor([[0.2*self.v_linear_max , self.v_angular_max],[self.v_linear_max , self.v_angular_max],
                                      [self.v_linear_max, 0], # v_linear, v_angular
                                      [self.v_linear_max, -self.v_angular_max],[0.2*self.v_linear_max, -self.v_angular_max],
                                      [0,0]], device=self.dvc) # a_space[-1] is no_op，agent is not allowed to use.
+        self.a_space = self.a_space.unsqueeze(dim=0).repeat((self.N, 1, 1)) # (6,2) -> (N,6,2)
+        self.arange_constant = torch.arange(self.N, device=self.dvc) # 仅用于索引
+        self.K = 0.6 * torch.ones((self.N,1), device=self.dvc) # control interval, in second; (N,1)
+        self.ctrl_interval = 0.1 * torch.ones((self.N,1), device=self.dvc) # control interval, in second; (N,1)
+        self.ctrl_delay = 1 # in ctrl_interval
+        self.ctrl_pipe_init = deque(maxlen=self.ctrl_delay+1) # holding the delayed action
+        for i in range(self.ctrl_delay+1): # 控制指令管道初始化: action5:[0,0]
+            self.ctrl_pipe_init.append(torch.ones(self.N, dtype=torch.long, device=self.dvc)*(self.a_space.size(1)-1))
 
         '''Lidar initialization'''
         self.ld_acc = 3  # lidar scan accuracy (cm). Reducing accuracy can accelerate simulation;
         self.ld_range = 100  # max scanning distance of lidar (cm). Reducing ld_range can accelerate simulation;
         self.ld_scan_result = torch.zeros((self.N, self.ld_num), device=self.dvc)  # used to hold lidar scan result, (N, ld_num)
+        self.ld_result_grouped = torch.zeros((self.N, self.grouped_ld_num), device=self.dvc) # the grouped lidar scan result, (N, grouped_ld_num)
         self.ld_angle_interval = torch.arange(self.ld_num, device=self.dvc) * 1.5 * torch.pi / (self.ld_num - 1) - 0.75 * torch.pi #(ld_num, )
         self.ld_angle_interval = self.ld_angle_interval.unsqueeze(dim=0).repeat((self.N, 1)) # (N, ld_num)
+
+        '''State noise initialization'''
+        if self.noise:
+            self.noise_magnitude = torch.hstack((torch.tensor([1,1,torch.pi/50,0.2,torch.pi/100]), torch.ones(self.grouped_ld_num))).to(self.dvc) #(32,)
+
+        '''Domain Randomization initialization'''
+        if self.DR:
+            # 创建基准值，后续在基准值上随机化
+            self.ctrl_interval_base = self.ctrl_interval.clone() # (N,1)
+            self.K_base = self.K.clone() # (N,1)
+            self.a_space_base = self.a_space.clone() # (N,6,2)
+            self.noise_magnitude_base = self.noise_magnitude.clone() # (32,)
+
 
         '''Pygame initialization'''
         assert self.render_mode is None or self.render_mode in self.metadata["render_modes"]
@@ -110,11 +128,13 @@ class Sparrow():
         self.window = None
         self.clock = None
         self.canvas = None
+        self.render_rate = self.ctrl_interval[self.ri].item()  # FPS = 1/self.render_rate
 
         '''Internal variables initialization'''
         # 初始化变量地址, 防止使用时再开辟cuda内存, 节省时间
+        self.step_counter_DR = 0 # 用于记录DR的持续步数
+        self.step_counter_vec = torch.zeros(self.N, dtype=torch.long, device=self.dvc) # 用于truncate
         self.car_state = torch.zeros((self.N, 5), device=self.dvc, dtype=torch.float32)
-        self.step_counter_vec = torch.zeros(self.N, dtype=torch.long, device=self.dvc)
         self.reward_vec = torch.zeros(self.N, device=self.dvc) # vectorized reward signal
         self.dw_vec = torch.zeros(self.N, dtype=torch.bool, device=self.dvc) # vectorized terminated signal
         self.tr_vec = torch.zeros(self.N, dtype=torch.bool, device=self.dvc)  # vectorized truncated signal
@@ -126,6 +146,7 @@ class Sparrow():
         self.state_upperbound[4] *= self.v_angular_max
         self.state_upperbound[5:self.state_dim] *= self.ld_range
 
+
         if self.dvc == 'cpu':
             print('Although Sparrow-V1 can be deployed on CPU, we strongly recommend you use GPU to accelerate simulation!')
         else:
@@ -135,10 +156,27 @@ class Sparrow():
             else:
                 print("When instantiate Sparrow-V1, you can set '--compile True' to boost the simulation speed. But this may cause errors on some GPU.")
 
+    def _random_noise(self, magnitude, size, device):
+        '''Generate uniform random noise in magnitude*[-1,1)'''
+        return (torch.rand(size=size, device=device)-0.5) * 2 * magnitude
+
     def _world_2_grid(self, coordinate_wd):
         ''' Convert world coordinates (denoted by _wd, continuous, unit: cm) to grid coordinates (denoted by _gd, discrete, 1 grid = 1 cm)
             Input: torch.tensor; Output: torch.tensor; Shape: Any shape '''
         return coordinate_wd.floor().int()
+
+    def _Domain_Randomization(self):
+        # 1) randomize the control interval; ctrl_interval.shape: (N,1)
+        self.ctrl_interval = self.ctrl_interval_base + self._random_noise(0.02, (self.N,1), self.dvc)# control interval, in second
+
+        # 2) randomize the kinematic parameter; K.shape: (N,1)
+        self.K = self.K_base + self._random_noise(0.3, (self.N,1), self.dvc)# control interval, in second;
+
+        # 3) randomize the max velocity; a_space.shape: (N,6,2)
+        self.a_space = self.a_space_base * (1 + self._random_noise(0.1, (self.N, 1, 2), self.dvc)) # Random the maximal speed of each env copy by 0.9~1.1
+
+        # 4) randomize the magnitude of state noise; noise_magnitude.shape: (N,32)
+        self.noise_magnitude = self.noise_magnitude_base * (1+self._random_noise(0.2, (self.N, self.state_dim), device=self.dvc)) # (32,)*(N,32)=(N,32)
 
     def _bound_init(self):
         '''Load the map_.png, extract the [x,y] of obstacle points, and map them into [x*window_size+y]'''
@@ -149,7 +187,7 @@ class Sparrow():
 
         # 加载各个地图, 提取bound_gd, 转换为bound_code, 存入bound_code_list中
         for map_name in self.maps: # ['map1.png' 'map10.png' 'map11.png' ... 'map14.png' 'map15.png' 'map2.png' 'map3.png' ... 'map9.png']
-            map_pyg = pygame.image.load(os.getcwd() + '/SparrowV1_0/' + self.map_address + '/' + map_name) # 不能用plt.imread读, 有bug
+            map_pyg = pygame.image.load(os.getcwd() + '/SparrowV1_1/' + self.map_address + '/' + map_name) # 不能用plt.imread读, 有bug
             map_np = pygame.surfarray.array3d(map_pyg)[:, :, 0]
 
             x_, y_ = np.where(map_np == 0) # 障碍物栅格的x,y坐标
@@ -177,17 +215,17 @@ class Sparrow():
         self.vec_bound_code = self.vec_bound_code[:, None, :].to(self.dvc)
 
     def reset(self):
-        # 小车位置初始化
+        '''Reset all vectorized Env'''
+        # 1) 小车位置初始化
         self.car_state *= 0
         self.car_state[:, 0:2] = (316 + (torch.rand((self.N, 2), device=self.dvc) - 0.5) * 20)  # [306~326]
         self.car_state[:, 2] = torch.rand(self.N, device=self.dvc) * 2 * torch.pi
 
-        # 步数初始化
+        # 2) 步数初始化
         self.step_counter_vec *= 0
-        
-        # 控制指令管道初始化: action5:[0,0]
-        for i in range(self.ctrl_delay+1):
-            self.ctrl_pipe.append(torch.ones(self.N, dtype=torch.long, device=self.dvc)*(len(self.a_space)-1))
+
+        # 3）控制指令管道初始化: action5:[0,0]
+        self.ctrl_pipe = copy.deepcopy(self.ctrl_pipe_init)
 
         # 获取初始状态
         observation_vec, info = self._get_obs(), None
@@ -233,48 +271,63 @@ class Sparrow():
         # 扫描的时候从小车轮廓开始扫的，最后要补偿小车半径的距离; (ld_num, ); torch.tensor
         self.ld_scan_result = (self.ld_scan_result + self.car_radius).clamp(0,self.ld_range) #(N, ld_num)
 
+        # 将雷达结果按ld_GN分组，并取没组的最小值作为最终结果
+        self.ld_result_grouped, _ = torch.min(self.ld_scan_result.reshape(self.N, self.grouped_ld_num, self.ld_GN), dim=-1, keepdim=False)
+
     def _Sparse_reward_function(self):
         '''Calculate vectorized reward, terminated(dw), truncated(tr), done(dw+tr) signale'''
         self.tr_vec = (self.step_counter_vec > self.max_ep_steps)# truncated signal (N,)
 
-        dead_vec = (self.ld_scan_result < self.collision_trsd).any(dim=-1)  # (N,)
+        dead_vec = (self.ld_result_grouped < self.collision_trsd).any(dim=-1)  # (N,)
         win_vec = (self.car_state[:,0:2] < self.target_area).all(dim=-1) # (N,)
         self.dw_vec = dead_vec + win_vec # terminated signal (N,)
 
         self.done_vec = self.tr_vec + self.dw_vec # (N,), used for AutoReset
 
-        self.reward_vec.fill_(0.0)
+        self.reward_vec.fill_(self.STEP)
         self.reward_vec[win_vec] = self.AWARD
         self.reward_vec[dead_vec] = self.PUNISH
 
     def _Normalize(self, observation):
         '''Normalize the raw observations (N,32) to relative observations (N,32)'''
-        # Normalize the orientation:
+        # 1) Normalize the orientation:
         beta = torch.arctan(observation[:,0]/observation[:,1]) + torch.pi/2 # arctan(x/y)+π/2
         observation[:, 2] = (beta - observation[:, 2]) / torch.pi
         observation[:][observation[:, 2]<-1] += 2
-        # Normalize other observation:
+
+        # 2) Normalize other observation:
         return observation/self.state_upperbound
 
     def _get_obs(self):
-        '''Return: UNormalized vectorized [dx, dy, theta, v_linear, v_angular, lidar_results(0), ..., lidar_results(26)] in shape (N,32) '''
+        '''Return: [dx, dy, theta, v_linear, v_angular, lidar_results(0), ..., lidar_results(26)] in shape (N,32) '''
         self._ld_scan_vec()  # Get the scan result of lidar, stored in self.ld_scan_result, in shape (N, ld_num)
         self._Sparse_reward_function() # calculate reward, dw, tr, done signals
-        observation_vec = torch.concat((self.car_state, self.ld_scan_result), dim=-1) #(N, 5) cat (N, ld_num) = (N, 32)
+        observation_vec = torch.concat((self.car_state, self.ld_result_grouped), dim=-1) #(N, 5) cat (N, grouped_ld_num) = (N, 32)
+
+        if self.noise:
+            observation_vec += self.noise_magnitude*self._random_noise(1, (self.N,self.state_dim), self.dvc) # (N, 32)
+
         if self.normalization:
             observation_vec = self._Normalize(observation_vec)
+
         return observation_vec
 
     def _Kinematic_model_vec(self, a):
         ''' V_now = K*V_previous + (1-K)*V_target
             Input: action index, (N,)
             Output: [v_l, v_l, v_a], (N,3)'''
-        self.car_state[:,3:5] = self.K * self.car_state[:,3:5] + (1-self.K)*self.a_space[a] # self.a_space[a] is (N,2)
+        self.car_state[:,3:5] = self.K * self.car_state[:,3:5] + (1-self.K)*self.a_space[self.arange_constant,a] # self.a_space[a] is (N,2)
         return torch.stack((self.car_state[:,3],self.car_state[:,3],self.car_state[:,4]),dim=1) # [v_l, v_l, v_a], (N,3)
 
 
     def step(self,current_a): # current_a should be vectorized action of dim (N, ) on self.dvc
         self.step_counter_vec += 1
+
+        # domain randomization in a fixed frequency
+        self.step_counter_DR += self.N
+        if self.DR and (self.step_counter_DR > self.DR_freq):
+            self.step_counter_DR = 0
+            self._Domain_Randomization()
 
         # control delay mechanism
         a = self.ctrl_pipe.popleft() # a is the delayed action, (N,)
@@ -332,7 +385,7 @@ class Sparrow():
         # init canvas
         if self.canvas is None :
             self.canvas = pygame.Surface((self.window_size , self.window_size ))
-            self.map = pygame.image.load(os.getcwd() + '/SparrowV1_0/'+self.map_address+'/' + self.maps[self.ri])
+            self.map = pygame.image.load(os.getcwd() + '/SparrowV1_1/'+self.map_address+'/' + self.maps[self.ri])
 
         # draw obstacles on canvas
         self.canvas.blit(self.map, self.canvas.get_rect())
@@ -380,7 +433,7 @@ class Sparrow():
             pygame.display.update()
 
             if self.render_speed == 'real':
-                self.clock.tick(int(1 / self.ctrl_interval))
+                self.clock.tick(int(1 / self.render_rate))
             elif self.render_speed == 'fast':
                 self.clock.tick(0)
             elif self.render_speed == 'slow':
@@ -395,7 +448,6 @@ class Sparrow():
         if self.window is not None:
             pygame.display.quit()
             pygame.quit()
-
 
 def str2bool(v):
     '''Fix the bool BUG for argparse: transfer str to bool'''
