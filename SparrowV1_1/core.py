@@ -147,7 +147,7 @@ class Sparrow():
         self.state_upperbound[5:self.state_dim] *= self.ld_range
 
 
-        if self.dvc == 'cpu':
+        if self.dvc.type == 'cpu':
             print('Although Sparrow-V1 can be deployed on CPU, we strongly recommend you use GPU to accelerate simulation!')
         else:
             # 编译雷达扫描函数，加速仿真. 但有些显卡上会报错.
