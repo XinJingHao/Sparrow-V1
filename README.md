@@ -317,7 +317,11 @@ done2 = dw2+tr2
 ct2 = ~(done2)
 ```
 
-## Version Comparison
+## The Sparrow families
+### Other Versions:
+- [Sparrow-V0](https://github.com/XinJingHao/Sparrow-V0): Original Version
+- [Sparrow-V1](https://github.com/XinJingHao/Sparrow-V1): Far more faster than V0
+- [Sparrow-V2](https://github.com/XinJingHao/Sparrow-V2): Dynamic Obstacles are supported
 
 ### Important Differences from Sparrow-V0:
 Some features from Sparrow-V0 are modified in ```Sparrow-V1.1```. They are:
