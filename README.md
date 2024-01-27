@@ -240,11 +240,11 @@ The state of the robot is a vector of length 32 (when ```ld_GN=1```), containing
 
 There are 6 discrete actions in Sparrow, controlling the target velocity of the robot:
 
-- **Turn Left:** [ 0.36 cm/s, 1 rad/s ]
+- **Turn Left:** [ 3.6 cm/s, 1 rad/s ]
 - **Turn Left + Move forward:** [ 18 cm/s, 1 rad/s ]
 - **Move forward:** [ 18 cm/s, 0 rad/s ]
 - **Turn Right + Move forward:** [ 18 cm/s, -1 rad/s ]
-- **Turn Right:** [ 0.36 cm/s, -1 rad/s ]
+- **Turn Right:** [ 3.6 cm/s, -1 rad/s ]
 - **Stop:** [ 0 cm/s, 0 rad/s ]
 
 We strongly suggest not using the **Stop** action when training an RL model, because it may result in the robot standing still and generating low-quality data. You might have also noted that when the robot is turning left or right, we also give it a small linear velocity. We do this to help the robot escape from the deadlock.
