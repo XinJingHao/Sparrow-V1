@@ -120,10 +120,10 @@ The training curve will be saved in the `runs` folder, for more details about ho
 
 ### Play with trained model:
 
-During training, the model will be saved in the `model` folder automatically (e.g. _model/467k.pth_).  After training, you can play with it via:
+During training, the model will be saved in the `model` folder automatically (e.g. _model/500k.pth_).  After training, you can play with it via:
 
 ```bash
-python train_DDQN_vector.py --render True --Loadmodel True --ModelIdex 467 # 467 means using '467k.pth'
+python train_DDQN_vector.py --render True --Loadmodel True --ModelIdex 500 # 500 means using '500k.pth'
 ```
 You can set ```--map_address``` and ```--ri``` to play the model with different maps. For more details, please see the following section.
 
