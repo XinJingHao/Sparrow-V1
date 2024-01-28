@@ -1,11 +1,13 @@
-from SparrowV1_1.core import Sparrow, str2bool
-import torch.nn.functional as F
-from datetime import datetime
+from SparrowV1_0.core import Sparrow, str2bool
+import copy
+import torch
 import torch.nn as nn
+import numpy as np
 import os, shutil
 import argparse
-import torch
-import copy
+from datetime import datetime
+import torch.nn.functional as F
+
 
 
 '''Hyperparameter Setting for DRL'''
@@ -14,12 +16,14 @@ parser.add_argument('--render', type=str2bool, default=False, help='Render or No
 parser.add_argument('--write', type=str2bool, default=False, help='Whether use SummaryWriter to record the training curve')
 parser.add_argument('--Loadmodel', type=str2bool, default=False, help='Whether load pretrained model')
 parser.add_argument('--ModelIdex', type=int, default=10, help='which model(e.g. 10k.pth) to load')
+parser.add_argument('--device', type=str, default='cuda:0', help='device for DDQN, Buffer, and Sparrow')
 
-parser.add_argument('--Max_train_steps', type=int, default=int(5E5), help='Max training steps')
-parser.add_argument('--eval_freq', type=int, default=int(2E2), help='evaluation frequency, in Vsteps')
+parser.add_argument('--Max_train_steps', type=int, default=int(5e5), help='Max training steps')
+parser.add_argument('--save_interval', type=int, default=int(1e3), help='Model saving interval, in Vsteps.')
+parser.add_argument('--random_steps', type=int, default=int(1E4), help='steps for random policy to explore')
 parser.add_argument('--init_explore_frac', type=float, default=1.0, help='init explore fraction')
 parser.add_argument('--end_explore_frac', type=float, default=0.2, help='end explore fraction')
-parser.add_argument('--decay_step', type=int, default=int(100E3), help='linear decay steps(total) for e-greedy noise')
+parser.add_argument('--decay_step', type=int, default=int(40e3), help='linear decay steps(total) for e-greedy noise')
 parser.add_argument('--min_eps', type=float, default=0.05, help='minimal e-greedy noise')
 
 parser.add_argument('--gamma', type=float, default=0.99, help='Discounted Factor')
@@ -30,35 +34,27 @@ parser.add_argument('--soft_target', type=str2bool, default=False, help='Target 
 
 
 '''Hyperparameter Setting For Sparrow'''
-parser.add_argument('--map_address', type=str, default='train_maps', help='map address: train_maps / test_maps')
-parser.add_argument('--device', type=str, default='cuda', help='running device of Sparrow: cuda / cpu')
+parser.add_argument('--map_address', type=str, default='same_maps', help='map address')
 parser.add_argument('--ld_num', type=int, default=27, help='number of lidar streams in each world')
-parser.add_argument('--ld_GN', type=int, default=3, help='how many lidar streams are grouped for one group')
 parser.add_argument('--ri', type=int, default=0, help='render index: the index of world that be rendered')
 parser.add_argument('--render_mode', type=str, default=None, help='human / rgb_array / None')
 parser.add_argument('--render_speed', type=str, default='fast', help='real / fast / slow')
 parser.add_argument('--max_ep_steps', type=int, default=1000, help='maximum episodic steps')
 parser.add_argument('--AWARD', type=float, default=80, help='reward of reaching target area')
 parser.add_argument('--PUNISH', type=float, default=-10, help='reward when collision happens')
-parser.add_argument('--STEP', type=float, default=0.0, help='reward of each step')
-parser.add_argument('--normalization', type=str2bool, default=True, help='whether to normalize the observations')
-parser.add_argument('--flip', type=str2bool, default=True, help='whether to expand training maps with fliped maps')
-parser.add_argument('--noise', type=str2bool, default=False, help='whether to add noise to the observations')
-parser.add_argument('--DR', type=str2bool, default=False, help='whether to use Domain Randomization')
-parser.add_argument('--DR_freq', type=int, default=int(5e3), help='frequency of Domain Randomization, in total steps')
+parser.add_argument('--normalization', type=str2bool, default=True, help='whether normalize the observations')
+parser.add_argument('--flip', type=str2bool, default=False, help='whether expand training maps with fliped maps')
 parser.add_argument('--compile', type=str2bool, default=False, help='whether to torch.compile to boost simulation speed')
 opt = parser.parse_args()
 
-opt.actor_envs = len(os.listdir(os.getcwd() + '/SparrowV1_1/' + opt.map_address))
+
+opt.actor_envs = len(os.listdir(os.getcwd() + '/SparrowV1_0/' + opt.map_address))
 if opt.flip: opt.actor_envs*=2
 if opt.write: from torch.utils.tensorboard import SummaryWriter
 device = torch.device(opt.device)
-assert opt.ld_num % opt.ld_GN == 0 #ld_num must be divisible by ld_GN
-opt.grouped_ld_num = int(opt.ld_num/opt.ld_GN)
-opt.state_dim = 5+opt.grouped_ld_num # [dx,dy,orientation,v_linear,v_angular] + [lidar result]
+opt.state_dim = 5+27 # [dx,dy,orientation,v_linear,v_angular] + [lidar result]
 opt.action_dim = 5
 opt.buffersize = min(int(1E6), opt.Max_train_steps)
-# print(opt)
 
 
 def main(opt):
@@ -69,79 +65,61 @@ def main(opt):
 
 	if opt.render: # render with Sparrow
 		opt.render_mode = 'human'
-		eval_envs = Sparrow(**vars(opt))
+		eval_envs = Sparrow(opt)
 		while True:
-			ep_r, arrival_rate = evaluate_policy(eval_envs, model, deterministic=True, AWARD=opt.AWARD)
-			print(f'Averaged Score:{ep_r} \n Arrival rate:{arrival_rate} \n')
+			ep_r = evaluate_policy(eval_envs, model, deterministic=True)
+			print('Score:', ep_r, '\n')
 
 	else: # trian with Sparrow
 		if opt.write:
 			# use SummaryWriter to record the training curve
 			timenow = str(datetime.now())[0:-10]
 			timenow = ' ' + timenow[0:13] + '_' + timenow[-2::]
-			writepath = f'runs/SparrowV1.1_DDQN' + timenow
+			writepath = 'runs/SparrowV1' + timenow
 			if os.path.exists(writepath): shutil.rmtree(writepath)
 			writer = SummaryWriter(log_dir=writepath)
 
 		# build vectorized environment and experience replay buffer
 		buffer = ReplayBuffer(opt)
-		envs = Sparrow(**vars(opt))
-
-		# build train/test env for evaluation
-		eval_confg = copy.deepcopy(opt)
-		eval_confg.flip = False
-		eval_confg.map_address = 'train_maps'
-		train_envs = Sparrow(**vars(eval_confg))
-		eval_confg.map_address = 'test_maps'
-		test_envs = Sparrow(**vars(eval_confg))
-
+		envs = Sparrow(opt)
 
 		s, info = envs.reset() # vectorized env has auto truncate mechanism, so we only reset() once.
 		total_steps = 0
 		ct = torch.ones(opt.actor_envs, device=device, dtype=torch.bool)
+		dones, train_arrival_rate = torch.zeros(opt.actor_envs, dtype=torch.bool, device=device), 0
 		while total_steps < opt.Max_train_steps:
-			a = model.select_action(s, deterministic=False) # will generate random steps at the beginning
+			if total_steps < opt.random_steps:
+				a = torch.randint(0,opt.action_dim,(opt.actor_envs,),device=device)
+			else:
+				a = model.select_action(s, deterministic=False)
 			s_next, r, dw, tr, info = envs.step(a) #dw(terminated): die or win; tr: truncated
 			buffer.add(s, a, r, dw, ct) #注意ct是用上一次step的， 即buffer.add()要在ct = ~(dw + tr)前
 			ct = ~(dw + tr)  # 如果当前s_next是”截断状态“或”终止状态“，则s_next与s_next_next是不consistent的，训练时要丢掉
 			s = s_next
 			total_steps += opt.actor_envs
 
-			'''train and fresh e-greedy noise'''
-			if total_steps >= 2E4:
+			# log and record
+			train_arrival_rate += (~dones * (r == opt.AWARD)).sum()  # 获得AWARD奖励时，表示抵达终点; Use last done
+			dones += (dw + tr)
+			if dones.all():
+				train_arrival_rate = round(train_arrival_rate.item() / opt.actor_envs, 2)
+				if opt.write: writer.add_scalar('Arrival Rate', train_arrival_rate, global_step=total_steps)
+				print('Vectorized Sparrow-v1: N:',opt.actor_envs, 'steps: {}k'.format(round(total_steps / 1000,2)), 'Arrival Rate:', train_arrival_rate)
+				dones, train_arrival_rate = torch.zeros(opt.actor_envs, dtype=torch.bool, device=device), 0
+
+			# train and fresh e-greedy noise
+			if total_steps >= opt.random_steps:
 				for _ in range(opt.actor_envs):
 					model.train(buffer)
 				# fresh vectorized e-greedy noise
 				if total_steps % (100*opt.actor_envs) == 0:
-					model.fresh_explore_prob(total_steps)
+					model.fresh_explore_prob(total_steps-opt.random_steps)
+
+			# save model
+			if total_steps % (opt.save_interval*opt.actor_envs) == 0:
+				model.save(int(total_steps/1e3))
 
 
-			'''evaluate, log, record, save'''
-			if total_steps % (opt.eval_freq*opt.actor_envs) == 0:
-				_, train_arrival_rate = evaluate_policy(train_envs, model, deterministic=True, AWARD=opt.AWARD)
-				_, test_arrival_rate = evaluate_policy(test_envs, model, deterministic=True, AWARD=opt.AWARD)
-				print(f'Sparrow-v1  N:{opt.actor_envs};  Total steps: {round(total_steps / 1e3, 2)}k;  Train Arrival rate:{train_arrival_rate};  Test Arrival rate:{test_arrival_rate}')
-				if opt.write:
-					writer.add_scalar('train_arrival_rate', train_arrival_rate, global_step=total_steps)
-					writer.add_scalar('test_arrival_rate', test_arrival_rate, global_step=total_steps)
-				if test_arrival_rate > 0.7: model.save(int(total_steps / 1e3))
-
-		envs.close()
-		train_envs.close()
-		test_envs.close()
-
-def evaluate_policy(envs, model, deterministic, AWARD):
-	s, info = envs.reset()
-	num_env = s.shape[0]
-	dones, total_r, arrival_rate = torch.zeros(num_env, dtype=torch.bool ,device=device), 0, 0
-	while not dones.all():
-		a = model.select_action(s, deterministic)
-		s, r, dw, tr, info = envs.step(a)
-		total_r += (~dones * r).sum()  # use last dones
-		arrival_rate += (~dones * (r==AWARD)).sum() # 获得AWARD奖励时，表示抵达终点
-
-		dones += (dw + tr)
-	return round(total_r.item() / num_env, 2), round(arrival_rate.item() / num_env, 2)
 
 class ReplayBuffer():
 	'''Experience replay buffer(For vector env)'''
@@ -237,7 +215,6 @@ class DDQN_Agent(object):
 		explore_frac = self.explore_frac_scheduler.value(steps)
 		i = int(explore_frac * self.actor_envs)
 		explore = torch.arange(i, device=device) / (2 * i)  # 0 ~ 0.5
-
 		self.p.fill_(self.min_eps)
 		self.p[self.actor_envs - i:] += explore
 		self.p = self.p[torch.randperm(self.actor_envs)]  # 打乱vectorized e-greedy noise, 让探索覆盖每一个地图
@@ -248,7 +225,7 @@ class DDQN_Agent(object):
 		with torch.no_grad():
 			a = self.q_net(s).argmax(dim=-1)
 			if deterministic:
-				return a
+				return a #
 			else:
 				replace = torch.rand(self.actor_envs, device=device) < self.p  # [n]
 				rd_a = torch.randint(0, self.action_dim, (self.actor_envs,), device=device)
@@ -276,7 +253,7 @@ class DDQN_Agent(object):
 			q_loss = torch.square(ct * (current_q_a - target_Q)).mean()
 		self.q_net_optimizer.zero_grad()
 		q_loss.backward()
-		torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), 10)
+		torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), 40)
 		self.q_net_optimizer.step()
 
 		# Update the target net
@@ -297,6 +274,19 @@ class DDQN_Agent(object):
 		self.q_net.load_state_dict(torch.load("./model/{}k.pth".format(steps)))
 		self.q_target = copy.deepcopy(self.q_net)
 		for p in self.q_target.parameters(): p.requires_grad = False
+
+
+def evaluate_policy(envs, model, deterministic):
+	s, info = envs.reset()
+	num_env = s.shape[0]
+	dones, total_r = torch.zeros(num_env, dtype=torch.bool ,device=device), 0
+	while not dones.all():
+		a = model.select_action(s, deterministic)
+		s, r, dw, tr, info = envs.step(a)
+		total_r += (~dones * r).sum()  # use last dones
+
+		dones += (dw + tr)
+	return round(total_r.item() / num_env, 2)
 
 
 class LinearSchedule(object):
