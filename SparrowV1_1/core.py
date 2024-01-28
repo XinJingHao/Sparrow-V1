@@ -293,7 +293,7 @@ class Sparrow():
         # 1) Normalize the orientation:
         beta = torch.arctan(observation[:,0]/observation[:,1]) + torch.pi/2 # arctan(x/y)+π/2
         observation[:, 2] = (beta - observation[:, 2]) / torch.pi
-        observation[:][observation[:, 2]<-1] += 2
+        observation[:, 2] += 2 * (observation[:, 2] < -1)
 
         # 2) Normalize other observation:
         return observation/self.state_upperbound
