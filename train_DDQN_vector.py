@@ -263,7 +263,7 @@ class DDQN_Agent(object):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 		else:
 			# hard target update
-			if self.train_counter % int(1/self.tau):
+			if self.train_counter % int(1/self.tau) == 0:
 				for param, target_param in zip(self.q_net.parameters(), self.q_target.parameters()):
 					target_param.data.copy_(param.data)
 
