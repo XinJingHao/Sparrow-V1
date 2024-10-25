@@ -239,7 +239,7 @@ class Sparrow():
     def _ld_not_in_bound_vec(self):
         '''Check whether ld_end_code is not in bound_code in a vectorized way => goon'''
         # 将ld_end_gd中的每个元素与bound_gd相减
-        pre_goon = self.ld_end_code[:, :, None] - self.vec_bound_code # vec_bound_code 在生成时已经加过维度了
+        pre_goon = self.ld_end_code[:, :, None] - self.vec_bound_code # (N,ld_num) - (N,1,max_bound_num)
 
         # 判断是否存在零值，存在即A中的元素在B中存在
         return ~torch.any(pre_goon == 0, dim=2) # goon
