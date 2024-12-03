@@ -392,7 +392,7 @@ class Sparrow():
         self.canvas.blit(self.map, self.canvas.get_rect())
 
         # draw target area
-        pygame.draw.rect(self.canvas, (100, 255, 100),pygame.Rect((7,7), (97, 97)),width=6)
+        pygame.draw.rect(self.canvas, (100, 255, 100),pygame.Rect((7,7), (self.target_area-3, self.target_area-3)),width=6)
 
         # draw lidar rays on canvas
         ld_result = self.ld_scan_result[self.ri].cpu().clone() # (ld_num, ), on cpu
