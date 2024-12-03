@@ -76,6 +76,7 @@ class Sparrow():
         '''Map initialization'''
         # ['map1.png' 'map10.png' 'map11.png' ... 'map14.png' 'map15.png' 'map2.png' 'map3.png' ... 'map9.png']
         self.maps = np.sort(os.listdir(os.getcwd() + '/SparrowV1_1/' + self.map_address))
+        self.maps = self.maps[self.maps != '.DS_Store'] # fix bug for MacOS
         self.N = len(self.maps) # Number of vectorized Env, equating to number of maps
         if self.flip: self.N *= 2 # 翻转后训练数据数量翻倍
         self._bound_init() # 为所有地图生成bound_code, 补齐后整合为self.vec_bound_code, 用于雷达扫描
