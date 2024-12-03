@@ -15,7 +15,7 @@
 
 
 ## Main Differences from [Sparrow-V1.1](https://github.com/XinJingHao/Sparrow-V1/tree/Sparrow-V1.1):
-+ state is changed to [ $$D2T$$, $$\alpha$$, $$V_{linear}$$, $$V_{angular}$$, LiDAR ]
++ ```state``` is changed to [ $$D2T$$, $$\alpha$$, $$V_{linear}$$, $$V_{angular}$$, LiDAR ]
 + state normalization is mandatory
 + $V^{max}_{linear}$ from 18 cm/s to 50 cm/s
 + $V^{max}_{angular}$ from 1 rad/s to 2 cm/s
