@@ -27,12 +27,14 @@
 To cite this repository in publications:
 
 ```bibtex
-@article{Color2023JinghaoXin,
-  title={Train a Real-world Local Path Planner in One Hour via Partially Decoupled Reinforcement Learning and Vectorized Diversity},
-  author={Jinghao Xin, Jinwoo Kim, Zhi Li, and Ning Li},
-  journal={arXiv preprint arXiv:2305.04180},
-  url={https://doi.org/10.48550/arXiv.2305.04180},
-  year={2023}
+@article{Color2025XJH,
+title = {Train a real-world local path planner in one hour via partially decoupled reinforcement learning and vectorized diversity},
+journal = {Engineering Applications of Artificial Intelligence},
+volume = {141},
+pages = {109726},
+year = {2025},
+issn = {0952-1976},
+doi = {https://doi.org/10.1016/j.engappai.2024.109726},
 }
 ```
 
