@@ -9,9 +9,23 @@
 <img width="100%" height="auto" src="https://github.com/XinJingHao/Images/blob/main/Sparrow_V1/render.gif">
 </div>
 
-![Python](https://img.shields.io/badge/Python-blue)
-![DRL](https://img.shields.io/badge/DRL-blueviolet)
-![Mobile Robot](https://img.shields.io/badge/MobileRobot-ff69b4)
+<p align="center">
+  <img src="https://github.com/XinJingHao/Color/blob/main/Imgs/1.gif" width="250" />
+  <img src="https://github.com/XinJingHao/Color/blob/main/Imgs/2.gif" width="250" />
+  <img src="https://github.com/XinJingHao/Color/blob/main/Imgs/3.gif" width="250" />
+</p>
+<p align="center">
+  <img src="https://github.com/XinJingHao/Color/blob/main/Imgs/4.gif" width="250" />
+  <img src="https://github.com/XinJingHao/Color/blob/main/Imgs/5.gif" width="250" />
+  <img src="https://github.com/XinJingHao/Color/blob/main/Imgs/6.gif" width="250" />
+</p>
+
+
+<div align=center>
+  <img src="https://img.shields.io/badge/Python-blue" />
+  <img src="https://img.shields.io/badge/DRL-blueviolet" />
+  <img src="https://img.shields.io/badge/MobileRobot-ff69b4" />
+</div>
 
 
 ## What's New in V1.1:
