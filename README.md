@@ -332,10 +332,9 @@ ct2 = ~(done2)
 ```
 
 ## The Sparrow families
-### Other Versions:
-- [Sparrow-V0](https://github.com/XinJingHao/Sparrow-V0): Original Version
-- [Sparrow-V1](https://github.com/XinJingHao/Sparrow-V1): Far more faster than V0
-- [Sparrow-V2](https://github.com/XinJingHao/Sparrow-V2): Dynamic Obstacles are supported
+- [Sparrow-V1](https://github.com/XinJingHao/Sparrow-V1): Single Robot, Static environments
+- [Sparrow-V2](https://github.com/XinJingHao/Sparrow-V2): Single Robot, Dynamic/Static environments
+- [Sparrow-V3](https://github.com/XinJingHao/Sparrow-V3): Multiple/Single Robot, Dynamic/Static environments
 
 ### Important Differences from Sparrow-V0:
 Some features from Sparrow-V0 are modified in ```Sparrow-V1.1```. They are:
@@ -374,7 +373,9 @@ doi = {https://doi.org/10.1016/j.engappai.2024.109726},
 
 ## Writing in the end
 
-The name "Sparrow" actually comes from an old saying *“The sparrow may be small but it has all the vital organs.”* Hope you enjoy using Sparrow! 
+The name "Sparrow" actually comes from an old saying *“麻雀虽小，五脏俱全.”* 
+
+Hope you enjoy using Sparrow! 
 
 Additionally, we have made detailed comments on the source code (`SparrowV1_1/core.py`) so that you can modify Sparrow to fit your own problem. But only for non-commercial purposes, and all rights are reserved by [Jinghao Xin](https://github.com/XinJingHao).
 
