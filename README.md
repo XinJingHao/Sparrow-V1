@@ -5,11 +5,8 @@
 
 ## Sparrow-V1.1: A Reinforcement Learning Friendly Simulator for Mobile Robot
 
-<div align="center">
-<img width="100%" height="auto" src="https://github.com/XinJingHao/Images/blob/main/Sparrow_V1/render.gif">
-</div>
-
 <p align="center">
+  <img src="https://github.com/XinJingHao/Images/blob/main/Sparrow_V1/render.gif" width="755" /> <br>
   <img src="https://github.com/XinJingHao/Color/blob/main/Imgs/1.gif" width="250" />
   <img src="https://github.com/XinJingHao/Color/blob/main/Imgs/2.gif" width="250" />
   <img src="https://github.com/XinJingHao/Color/blob/main/Imgs/3.gif" width="250" />
