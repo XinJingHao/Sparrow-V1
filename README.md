@@ -357,6 +357,7 @@ To cite this repository in publications:
 ```bibtex
 @article{Color2025XJH,
 title = {Train a real-world local path planner in one hour via partially decoupled reinforcement learning and vectorized diversity},
+author={Xin, Jinghao and Kim, Jinwoo and Li, Zhi and Li, Ning},
 journal = {Engineering Applications of Artificial Intelligence},
 volume = {141},
 pages = {109726},
